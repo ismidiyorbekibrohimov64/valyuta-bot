@@ -1,0 +1,94 @@
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import requests
+import asyncio
+
+API_TOKEN = "8276069626:AAEOLRbVCymjwsLJhkEEpe3mJhGC9uFXhdI"  # Bu yerga bot tokeningizni qo'ying
+
+# Bot va Dispatcher yaratish
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher()
+
+# Inline menu yaratish
+def main_menu():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💱 Valyuta kurslari", callback_data="currency")]
+        ]
+    )
+
+def back_menu():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Orqaga", callback_data="back")]
+        ]
+    )
+
+# /start komandasi
+@dp.message(F.text == "/start")
+async def start_handler(message: types.Message):
+    await message.answer(
+        "Salom! Men sizga Markaziy bank valyuta kurslarini ko‘rsataman.\n\n"
+        "Quyidagi tugmadan tanlang:",
+        reply_markup=main_menu()
+    )
+
+# Valyuta kurslari handler
+@dp.callback_query(F.data == "currency")
+async def currency_handler(callback: types.CallbackQuery):
+    await callback.answer("📊 Valyuta kursi yuklanmoqda...")
+
+    try:
+        response = requests.get("https://cbu.uz/uz/arkhiv-kursov-valyut/json/", timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        currencies = ["USD", "EUR", "RUB", "GBP"]
+        result = {c: next((x for x in data if x["Ccy"] == c), None) for c in currencies}
+
+        text = "💱 <b>Markaziy Bank Valyuta Kurslari</b>\n\n━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        if result["USD"]:
+            text += f"💵 <b>USD:</b> {result['USD']['Rate']} so'm\n📅 Sana: {result['USD']['Date']}\n\n"
+        if result["EUR"]:
+            text += f"💶 <b>EUR:</b> {result['EUR']['Rate']} so'm\n\n"
+        if result["RUB"]:
+            text += f"🇷🇺 <b>RUB:</b> {result['RUB']['Rate']} so'm\n\n"
+        if result["GBP"]:
+            text += f"💷 <b>GBP:</b> {result['GBP']['Rate']} so'm\n\n"
+
+        if not any(result.values()):
+            text = "❌ Valyuta ma'lumotlari topilmadi."
+        else:
+            text += "━━━━━━━━━━━━━━━━━━━━\n🔄 Ma'lumotlar har kuni yangilanadi\n🏦 Manba: Markaziy Bank"
+
+    except requests.exceptions.Timeout:
+        text = "⏱ <b>Vaqt tugadi</b>\n\nIltimos, qayta urinib ko'ring."
+    except requests.exceptions.ConnectionError:
+        text = "🌐 <b>Internet bilan bog'lanishda xatolik</b>\n\nInternetni tekshiring."
+    except requests.exceptions.RequestException as e:
+        text = f"⚠️ <b>Xatolik yuz berdi:</b>\n{e}"
+    except Exception as e:
+        text = f"❌ <b>Kutilmagan xatolik:</b>\n{e}"
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_menu(),
+        parse_mode="HTML"
+    )
+
+# Orqaga tugma handleri
+@dp.callback_query(F.data == "back")
+async def back_handler(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "Bosh menyu:",
+        reply_markup=main_menu()
+    )
+
+# Botni ishga tushirish
+if __name__ == "__main__":
+    async def main():
+        print("Bot ishga tushdi...")
+        await dp.start_polling(bot)
+
+    asyncio.run(main())
